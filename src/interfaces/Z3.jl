@@ -1,6 +1,13 @@
 using Z3
 using Z3: Context, Solver
 
+dictoperators = Dict{Connective,Function}([
+    (¬,(x) -> Z3.not(x)),
+    (∧,(x,y) -> Z3.and(x,y)),
+    (∨,(x,y) -> Z3.or(x,y)),
+    (→,(x,y) -> Z3.implies(x,y)),
+]);
+
 ################################################################################################
 ####################################### Formula ################################################
 ################################################################################################
@@ -23,26 +30,24 @@ function z3translate(
     ctx::Context = Context(), 
     s::Solver = Solver(ctx, "QF_NRA"),
     initialpoint::Bool=true,
+    dictoperators::Dict{Connective,Function}=dictoperators,
 ) where {C<:Connective, SS<:AbstractSyntaxStructure}
     fchildren = children(f)
-    op = findall(x->typeof(x)==C, BASE_CONNECTIVES)
+    op = connective(f)
 
-    firstprop = z3translate(first(fchildren); ctx=ctx, s=s, initialpoint=false)
+    firstprop = z3translate(first(fchildren); ctx=ctx, s=s, initialpoint=false, dictoperators=dictoperators)
     if SoleLogics.arity(op) == 1
-        stringop = Z3.not
-
-        return initialpoint ? add(s, stringop(firstprop)) : stringop(firstprop)
+        return initialpoint ? add(s, dictoperators[op](firstprop)) : dictoperators[op](firstprop)
     elseif SoleLogics.arity(op) == 2
         secondprop = 
             length(fchildren) > 2 ? 
                 z3translate(
                     LeftmostLinearForm{C,SS}(fchildren[2:end]); 
-                    ctx=ctx, s=s, initialpoint=false,
+                    ctx=ctx, s=s, initialpoint=false, dictoperators=dictoperators,
                 ) : 
-                z3translate(fchildren[2]; ctx=ctx, s=s, initialpoint=false)
-        stringop = ftoken == CONJUNCTION ? Z3.and : (ftoken == DISJUNCTION ? Z3.or : Z3.implies) 
+                z3translate(fchildren[2]; ctx=ctx, s=s, initialpoint=false, dictoperators=dictoperators)
 
-        return initialpoint ? add(s, stringop(firstprop,secondprop)) : stringop(firstprop,secondprop)
+        return initialpoint ? add(s, dictoperators[op](firstprop,secondprop)) : dictoperators[op](firstprop,secondprop)
     else
         error("Extend Z3 translation implementation for connectives with arity greater than 2")
     end
@@ -64,23 +69,24 @@ function z3translate(
     ctx::Context=Context(),
     s::Solver = Solver(ctx, "QF_NRA"),
     initialpoint::Bool=true,
+    dictoperators::Dict{Connective,Function}=dictoperators,
 )
     ftoken = token(f)
     fchildren = children(f)
 
-    firstprop = z3translate(first(fchildren); ctx=ctx, s=s, initialpoint=false)
+    firstprop = z3translate(first(fchildren); ctx=ctx, s=s, initialpoint=false, dictoperators=dictoperators)
     if SoleLogics.arity(ftoken) == 1
-        stringop = Z3.not
-
-        return initialpoint ? add(s, stringop(firstprop)) : stringop(firstprop)
+        return initialpoint ? add(s, dictoperators[ftoken](firstprop)) : dictoperators[ftoken](firstprop)
     elseif SoleLogics.arity(ftoken) == 2
         secondprop = 
             length(fchildren) > 2 ? 
-                z3translate(SyntaxBranch(ftoken,fchildren[2:end]...); ctx=ctx, s=s, initialpoint=false) : 
-                z3translate(fchildren[2]; ctx=ctx, s=s, initialpoint=false)
-        stringop = ftoken == CONJUNCTION ? Z3.and : (ftoken == DISJUNCTION ? Z3.or : Z3.implies) 
+                z3translate(
+                    SyntaxBranch(ftoken,fchildren[2:end]...); 
+                    ctx=ctx, s=s, initialpoint=false, dictoperators=dictoperators,
+                ) : 
+                z3translate(fchildren[2]; ctx=ctx, s=s, initialpoint=false, dictoperators=dictoperators)
 
-        return initialpoint ? add(s, stringop(firstprop,secondprop)) : stringop(firstprop,secondprop)
+        return initialpoint ? add(s, dictoperators[op](firstprop,secondprop)) : dictoperators[op](firstprop,secondprop)
     else
         error("Extend Z3 translation implementation for connectives with arity greater than 2")
     end
@@ -109,10 +115,11 @@ function z3translate(
     ctx::Context=Context(),
     s::Solver = Solver(ctx, "QF_NRA"),
     initialpoint::Bool=true,
+    dictoperators::Dict{Connective,Function}=dictoperators,
 )
     ispositive = ispos(f)
     proposition = prop(f)
-    subassertion = z3translate(proposition; ctx=ctx)
+    subassertion = z3translate(proposition; ctx=ctx, s=s, initialpoint=false, dictoperators=dictoperators)
 
     assertion = !ispositive ? Z3.not(subassertion) : subassertion
 
