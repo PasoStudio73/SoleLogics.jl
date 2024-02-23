@@ -570,22 +570,22 @@ function accessibles(
     w::W,
     r::AbstractRelation,
 ) where {W<:AbstractWorld}
-    accessibles(frames[r], w, r)
+    accessibles(frames[r], w)
 end
-function accessibles(
-    fr::WrapperMultiModalFrame{W},
-    w::W,
-    r::IdentityRel,
-) where {W<:AbstractWorld}
-    [w]
-end
-function accessibles(
-    fr::WrapperMultiModalFrame{W},
-    w::W,
-    r::GlobalRel,
-) where {W<:AbstractWorld}
-    accessibles(fr, r)
-end
+# function accessibles(
+#     fr::WrapperMultiModalFrame{W},
+#     w::W,
+#     r::IdentityRel,
+# ) where {W<:AbstractWorld}
+#     [w]
+# end
+# function accessibles(
+#     fr::WrapperMultiModalFrame{W},
+#     w::W,
+#     r::GlobalRel,
+# ) where {W<:AbstractWorld}
+#     accessibles(fr, r)
+# end
 
 # """
 # TODO
