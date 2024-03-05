@@ -112,4 +112,6 @@ include("experimentals.jl")
 
 include("deprecate.jl")
 
+include("interfaces/Z3.jl")
+
 end

@@ -1,5 +1,5 @@
-using Z3
-using Z3: Context, Solver
+#using Z3
+#using Z3: Context, Solver
 
 # Global function: Z3 API
 z3not(x::String) = "(not " * x * ")"
@@ -18,17 +18,17 @@ dictprop = Dict{Connective,Function}([
 ])
 
 dictmodal = merge(
-    prop,
-    Dict{Connective,Function}(
+    dictprop,
+    Dict{Connective,Function}([
         (◊, z3forall),
         (□, z3exists),
-    ),
+    ]),
 );
 
 # Global set of variables
-vars = []
-for i in collect('a':'z')
-    for j in collect(1:100)
+vars = String[]
+for i in collect('z':-1:'a')
+    for j in collect(100:-1:1)
         push!(vars,"$i$j")
     end
 end
@@ -51,7 +51,9 @@ function z3translate(f::Formula; logic::Symbol=:prop, kwargs...)
         result = result * "(declare-sort A 0)\n(declare-fun R (A A) Bool)\n"
     end
 
-    return result * "(assert " * z3subtranslate(f; dictops = dictops, kwargs...) * " )"
+    context, formula = z3subtranslate(f; dictops = dictops, freevariables=vars, kwargs...)
+
+    return result * context * "(assert $(formula) )"
 end
 
 ################################################################################################
@@ -74,11 +76,40 @@ z3subtranslate(f::AnchoredFormula; kwargs...) = z3subtranslate(synstruct(f); kwa
 function z3subtranslate(
     f::LeftmostLinearForm{C,SS};
     dictops::Dict{Connective,Function}=dictops,
+    freevariables::Vector{String}=vars,
+    kwargs...,
 ) where {C<:Connective, SS<:AbstractSyntaxStructure}
     fchildren = children(f)
     op = connective(f)
 
-    ### ...
+    firstcontext, firstprop = z3subtranslate(
+        first(fchildren); 
+        dictops=dictops, freevariables=freevariables, kwargs...,
+    )
+    if SoleLogics.arity(op) == 1
+        if op == ¬
+            return (firstcontext, dictops[op](firstprop))
+        else
+            x = pop!(freevariables)
+            y = pop!(freevariables)
+            quantifiers = "((" * x * " A) (" * y * " A))"
+            subformula = dictops[∧]("(R " * x * " " * y * ")", firstprop)
+
+            return (firstcontext, dictops[op](quantifiers, subformula))
+        end
+    elseif SoleLogics.arity(op) == 2
+        secondcontext, secondprop = 
+            length(fchildren) > 2 ? 
+                z3subtranslate(
+                    LeftmostLinearForm{C,SS}(fchildren[2:end]); 
+                    dictops=dictops, freevariables=freevariables, kwargs...,
+                ) : 
+                z3subtranslate(fchildren[2]; dictops=dictops, freevariables=freevariables, kwargs...)
+
+        return (firstcontext * secondcontext, dictops[op](firstprop,secondprop))
+    else
+        error("Extend Z3 translation implementation for connectives with arity greater than 2")
+    end
 end
 
 ################################################################################################
@@ -95,11 +126,40 @@ z3subtranslate(f::SyntaxTree; kwargs...) =
 function z3subtranslate(
     f::SyntaxBranch;
     dictops::Dict{Connective,Function}=dictops,
+    freevariables::Vector{String}=vars,
+    kwargs...,
 )
     ftoken = token(f)
     fchildren = children(f)
 
-    ### ...
+    firstcontext, firstprop = z3subtranslate(
+        first(fchildren); 
+        dictops=dictops, freevariables=freevariables, kwargs...,
+    )
+    if SoleLogics.arity(ftoken) == 1
+        if ftoken == ¬
+            return (firstcontext, dictops[ftoken](firstprop))
+        else
+            x = pop!(freevariables)
+            y = pop!(freevariables)
+            quantifiers = "((" * x * " A) (" * y * " A))"
+            subformula = dictops[∧]("(R " * x * " " * y * ")", firstprop)
+
+            return (firstcontext, dictops[ftoken](quantifiers, subformula))
+        end
+    elseif SoleLogics.arity(ftoken) == 2
+        secondcontext, secondprop = 
+            length(fchildren) > 2 ? 
+                z3subtranslate(
+                    SyntaxBranch(ftoken,fchildren[2:end]...);
+                    dictops=dictops, freevariables=freevariables, kwargs...,
+                ) : 
+                z3subtranslate(fchildren[2]; dictops=dictops, freevariables=freevariables, kwargs...)
+
+        return (firstcontext * secondcontext, dictops[ftoken](firstprop,secondprop))
+    else
+        error("Extend Z3 translation implementation for connectives with arity greater than 2")
+    end
 end
 
 ################################################################################################
@@ -109,7 +169,7 @@ end
 z3subtranslate(f::SyntaxLeaf; kwargs...) = 
     error("Missing implementation of Z3 translation for: " * typeof(f))
 
-z3subtranslate(f::Atom; kwargs...) = ("(declare-const " * string(value(f)) * " Bool)\n", "")
+z3subtranslate(f::Atom; kwargs...) = ("(declare-const " * string(value(f)) * " Bool)\n", string(value(f)))
 
 function z3subtranslate(
     f::Literal;
@@ -118,15 +178,12 @@ function z3subtranslate(
 )
     ispositive = ispos(f)
     proposition = prop(f)
-    (context, subassertion) = z3subtranslate(proposition; dictops=dictops)
+    (context, subassertion) = z3subtranslate(proposition; dictops=dictops, kwargs...)
 
     return (context, dictops[¬](subassertion))
 end
 
-function z3subtranslate(f::Top; kwargs...)
-
-    return ("(declare-const top Bool)\n", "(= top true)")
-end
+z3subtranslate(f::Top; kwargs...) = return ("(declare-const top Bool)\n", "(= top true)")
 
 
 ################################################################################################
