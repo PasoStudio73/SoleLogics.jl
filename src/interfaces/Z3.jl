@@ -20,8 +20,8 @@ dictprop = Dict{Connective,Function}([
 dictmodal = merge(
     dictprop,
     Dict{Connective,Function}([
-        (◊, z3forall),
-        (□, z3exists),
+        (◊, z3exists),
+        (□, z3forall),
     ]),
 );
 
@@ -37,7 +37,7 @@ end
 #################################### Initial Point #############################################
 ################################################################################################
 function z3translate(f::Formula; logic::Symbol=:prop, kwargs...)
-    result = ""
+    result = "" #"(set-logic QF_LIA)\n"
     dictops = nothing
 
     if !(logic == :prop || logic == :modal)
