@@ -1,7 +1,11 @@
 using Z3
 using SoleLogics
 
-p = Atom("p"); q = Atom("q"); form = ◊(p) ∧ q
+p = Atom("p")
+q = Atom("q")
+#form = ◊(p) ∧ q
+#form = ◊(p ∧ q)
+form = ◊(◊(p) ∧ q)
 
 ctx = Context()
 s = Solver(ctx, "QF_NRA")

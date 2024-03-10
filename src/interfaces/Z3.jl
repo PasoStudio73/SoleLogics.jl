@@ -6,8 +6,8 @@ z3not(x::String) = "(not " * x * ")"
 z3and(x::String, y::String) = "(and " * x * " " * y * ")"
 z3or(x::String, y::String) =  "(or " * x * " " * y * ")"
 z3implies(x::String, y::String) = "(=> " * x * " " * y * ")"
-z3forall(x::String, y::String) = "(forall " * x * " " * y * " )"
-z3exists(x::String, y::String) = "(exists " * x * " " * y * " )"
+z3forall(x::String, y::String) = "(forall " * x * " " * y * ")"
+z3exists(x::String, y::String) = "(exists " * x * " " * y * ")"
 
 # Logic dictionaries
 dictprop = Dict{Connective,Function}([
@@ -37,7 +37,7 @@ end
 #################################### Initial Point #############################################
 ################################################################################################
 function z3translate(f::Formula; logic::Symbol=:prop, kwargs...)
-    result = "" #"(set-logic QF_LIA)\n"
+    result = ""
     dictops = nothing
 
     if !(logic == :prop || logic == :modal)
@@ -51,9 +51,14 @@ function z3translate(f::Formula; logic::Symbol=:prop, kwargs...)
         result = result * "(declare-sort A 0)\n(declare-fun R (A A) Bool)\n"
     end
 
-    context, formula = z3subtranslate(f; dictops = dictops, freevariables=vars, kwargs...)
+    freevariables = deepcopy(vars)
+    currentvariable = pop!(freevariables)
+    context, formula = z3subtranslate(
+        f; 
+        dictops = dictops, freevariables=freevariables, currentvariable=currentvariable, kwargs...,
+    )
 
-    return result * context * "(assert $(formula) )"
+    return result * context * "(assert (forall (($(currentvariable) A)) $(formula)))"
 end
 
 ################################################################################################
@@ -77,23 +82,29 @@ function z3subtranslate(
     f::LeftmostLinearForm{C,SS};
     dictops::Dict{Connective,Function}=dictops,
     freevariables::Vector{String}=vars,
+    currentvariable::String,
     kwargs...,
 ) where {C<:Connective, SS<:AbstractSyntaxStructure}
     fchildren = children(f)
     op = connective(f)
 
+    succcurrentvariable = op == ◊ || op == □ ? pop!(freevariables) : currentvariable
     firstcontext, firstprop = z3subtranslate(
         first(fchildren); 
-        dictops=dictops, freevariables=freevariables, kwargs...,
+        dictops=dictops, 
+        freevariables=freevariables, 
+        currentvariable=succcurrentvariable,  
+        kwargs...,
     )
+    
     if SoleLogics.arity(op) == 1
         if op == ¬
             return (firstcontext, dictops[op](firstprop))
         else
-            x = pop!(freevariables)
-            y = pop!(freevariables)
-            quantifiers = "((" * x * " A) (" * y * " A))"
-            subformula = dictops[∧]("(R " * x * " " * y * ")", firstprop)
+            x = currentvariable
+            y = succcurrentvariable
+            quantifiers = "((" * y * " A))"
+            subformula = op == ◊ ? dictops[∧]("(R " * x * " " * y * ")", firstprop) : dictops[→]("(R " * x * " " * y * ")", firstprop)
 
             return (firstcontext, dictops[op](quantifiers, subformula))
         end
@@ -102,9 +113,18 @@ function z3subtranslate(
             length(fchildren) > 2 ? 
                 z3subtranslate(
                     LeftmostLinearForm{C,SS}(fchildren[2:end]); 
-                    dictops=dictops, freevariables=freevariables, kwargs...,
+                    dictops=dictops, 
+                    freevariables=freevariables, 
+                    currentvariable=succcurrentvariable, 
+                    kwargs...,
                 ) : 
-                z3subtranslate(fchildren[2]; dictops=dictops, freevariables=freevariables, kwargs...)
+                z3subtranslate(
+                    fchildren[2]; 
+                    dictops=dictops, 
+                    freevariables=freevariables, 
+                    currentvariable=succcurrentvariable,
+                    kwargs...,
+                )
 
         return (firstcontext * secondcontext, dictops[op](firstprop,secondprop))
     else
@@ -127,23 +147,29 @@ function z3subtranslate(
     f::SyntaxBranch;
     dictops::Dict{Connective,Function}=dictops,
     freevariables::Vector{String}=vars,
+    currentvariable::String,
     kwargs...,
 )
     ftoken = token(f)
     fchildren = children(f)
 
+    succcurrentvariable = ftoken == ◊ || ftoken == □ ? pop!(freevariables) : currentvariable
     firstcontext, firstprop = z3subtranslate(
         first(fchildren); 
-        dictops=dictops, freevariables=freevariables, kwargs...,
+        dictops=dictops, 
+        freevariables=freevariables, 
+        currentvariable=succcurrentvariable,
+        kwargs...,
     )
+
     if SoleLogics.arity(ftoken) == 1
         if ftoken == ¬
             return (firstcontext, dictops[ftoken](firstprop))
         else
-            x = pop!(freevariables)
-            y = pop!(freevariables)
-            quantifiers = "((" * x * " A) (" * y * " A))"
-            subformula = dictops[∧]("(R " * x * " " * y * ")", firstprop)
+            x = currentvariable
+            y = succcurrentvariable
+            quantifiers = "((" * y * " A))"
+            subformula = ftoken == ◊ ? dictops[∧]("(R " * x * " " * y * ")", firstprop) : dictops[→]("(R " * x * " " * y * ")", firstprop)
 
             return (firstcontext, dictops[ftoken](quantifiers, subformula))
         end
@@ -152,9 +178,18 @@ function z3subtranslate(
             length(fchildren) > 2 ? 
                 z3subtranslate(
                     SyntaxBranch(ftoken,fchildren[2:end]...);
-                    dictops=dictops, freevariables=freevariables, kwargs...,
+                    dictops=dictops, 
+                    freevariables=freevariables, 
+                    currentvariable=succcurrentvariable,
+                    kwargs...,
                 ) : 
-                z3subtranslate(fchildren[2]; dictops=dictops, freevariables=freevariables, kwargs...)
+                z3subtranslate(
+                    fchildren[2]; 
+                    dictops=dictops, 
+                    freevariables=freevariables, 
+                    currentvariable=succcurrentvariable,
+                    kwargs...,
+                )
 
         return (firstcontext * secondcontext, dictops[ftoken](firstprop,secondprop))
     else
