@@ -58,7 +58,7 @@ function z3translate(f::Formula; logic::Symbol=:prop, kwargs...)
         dictops = dictops, freevariables=freevariables, currentvariable=currentvariable, kwargs...,
     )
 
-    return result * context * "(assert (forall (($(currentvariable) A)) $(formula)))"
+    return result * join(unique(context)) * "(assert $(logic==:modal ? "(forall (($(currentvariable) A))" : "") $(formula)" * (logic==:modal ? ")" : "") * ")"
 end
 
 ################################################################################################
@@ -126,7 +126,7 @@ function z3subtranslate(
                     kwargs...,
                 )
 
-        return (firstcontext * secondcontext, dictops[op](firstprop,secondprop))
+        return (vcat(firstcontext,secondcontext), dictops[op](firstprop,secondprop))
     else
         error("Extend Z3 translation implementation for connectives with arity greater than 2")
     end
@@ -191,7 +191,7 @@ function z3subtranslate(
                     kwargs...,
                 )
 
-        return (firstcontext * secondcontext, dictops[ftoken](firstprop,secondprop))
+        return (vcat(firstcontext,secondcontext), dictops[ftoken](firstprop,secondprop))
     else
         error("Extend Z3 translation implementation for connectives with arity greater than 2")
     end
@@ -204,7 +204,7 @@ end
 z3subtranslate(f::SyntaxLeaf; kwargs...) = 
     error("Missing implementation of Z3 translation for: " * typeof(f))
 
-z3subtranslate(f::Atom; kwargs...) = ("(declare-const " * string(value(f)) * " Bool)\n", string(value(f)))
+z3subtranslate(f::Atom; kwargs...) = (["(declare-const " * string(value(f)) * " Bool)\n"], string(value(f)))
 
 function z3subtranslate(
     f::Literal;
@@ -215,10 +215,10 @@ function z3subtranslate(
     proposition = prop(f)
     (context, subassertion) = z3subtranslate(proposition; dictops=dictops, kwargs...)
 
-    return (context, dictops[¬](subassertion))
+    return ([context], dictops[¬](subassertion))
 end
 
-z3subtranslate(f::Top; kwargs...) = return ("(declare-const top Bool)\n", "(= top true)")
+z3subtranslate(f::Top; kwargs...) = return (["(declare-const top Bool)\n"], "(= top true)")
 
 
 ################################################################################################
